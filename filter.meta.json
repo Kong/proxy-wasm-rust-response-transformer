@@ -1,0 +1,78 @@
+{
+  "config_schema": {
+    "$id": "response_transformer",
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "title": "Response Transformer",
+    "type": "object",
+    "anyOf": [
+      {"required": ["add"]},
+      {"required": ["remove"]},
+      {"required": ["rename"]},
+      {"required": ["replace"]},
+      {"required": ["append"]}
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "add": {
+        "type": "object",
+        "description": "add headers",
+        "properties": {
+          "headers": {
+            "type": "array",
+            "elements": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "remove": {
+        "type": "object",
+        "properties": {
+          "headers": {
+            "description": "remove headers",
+            "type": "array",
+            "elements": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "rename": {
+        "description": "rename headers",
+        "type": "object",
+        "properties": {
+          "headers": {
+            "type": "array",
+            "elements": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "replace": {
+        "description": "replace headers",
+        "type": "object",
+        "properties": {
+          "headers": {
+            "type": "array",
+            "elements": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "append": {
+        "description": "append headers",
+        "type": "object",
+        "properties": {
+          "headers": {
+            "type": "array",
+            "elements": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

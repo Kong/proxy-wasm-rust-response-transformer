@@ -35,6 +35,6 @@ jobs:
 
     - uses: ncipollo/release-action@v1
       with:
-        artifacts: filter.wasm
+        artifacts: filter.wasm,filter.meta.json
         draft: ${{ github.ref != 'refs/heads/main' && 'true' || 'false' }}
         prerelease: ${{ github.ref != 'refs/heads/main' && 'true' || 'false' }}
