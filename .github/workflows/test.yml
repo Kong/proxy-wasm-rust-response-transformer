@@ -32,9 +32,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: ./.github/actions/setup
-        with:
-          build: true
-
       - name: cargo test
         # for some reason cargo won't run unit tests against the default wasm32-wasi target
         run: cargo test --target x86_64-unknown-linux-gnu
