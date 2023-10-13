@@ -31,4 +31,4 @@ jobs:
     - uses: ncipollo/release-action@v1
       with:
         artifacts: 'target/wasm32-wasi/release/proxy_wasm_rust_response_transformer.wasm'
-        draft: ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }
+        draft: ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}
