@@ -15,62 +15,122 @@
     "properties": {
       "add": {
         "type": "object",
-        "description": "add headers",
+        "additionalProperties": false,
         "properties": {
           "headers": {
-            "type": "array",
-            "elements": {
-              "type": "string"
-            }
+            "description": "add headers",
+            "$ref": "#/definitions/stringArray"
+          },
+          "json": {
+            "description": "add JSON properties",
+            "$ref": "#/definitions/stringArray"
+          },
+          "json_types": {
+            "description": "List of JSON type names. Specify the types of the JSON values returned when adding JSON properties.",
+            "$ref": "#/definitions/JsonTypesArray"
           }
-        }
+        },
+        "anyOf": [
+          {"required": ["headers"]},
+          {"required": ["json"]}
+        ]
       },
       "remove": {
         "type": "object",
+        "additionalProperties": false,
         "properties": {
           "headers": {
             "description": "remove headers",
-            "type": "array",
-            "elements": {
-              "type": "string"
-            }
+            "$ref": "#/definitions/stringArray"
+          },
+          "json": {
+            "description": "remove JSON attributes",
+            "$ref": "#/definitions/stringArray"
           }
-        }
+        },
+        "anyOf": [
+          {"required": ["headers"]},
+          {"required": ["json"]}
+        ]
       },
       "rename": {
-        "description": "rename headers",
         "type": "object",
+        "additionalProperties": false,
         "properties": {
           "headers": {
-            "type": "array",
-            "elements": {
-              "type": "string"
-            }
+            "description": "rename headers",
+            "$ref": "#/definitions/stringArray"
+          },
+          "json": {
+            "description": "rename JSON attributes",
+            "$ref": "#/definitions/stringArray"
           }
-        }
+        },
+        "anyOf": [
+          {"required": ["headers"]},
+          {"required": ["json"]}
+        ]
       },
       "replace": {
-        "description": "replace headers",
         "type": "object",
+        "additionalProperties": false,
         "properties": {
           "headers": {
-            "type": "array",
-            "elements": {
-              "type": "string"
-            }
+            "description": "replace headers",
+            "$ref": "#/definitions/stringArray"
+          },
+          "json": {
+            "description": "replace JSON properties",
+            "$ref": "#/definitions/stringArray"
+          },
+          "json_types": {
+            "description": "List of JSON type names. Specify the types of the JSON values returned when replacing JSON properties.",
+            "$ref": "#/definitions/JsonTypesArray"
           }
-        }
+        },
+        "anyOf": [
+          {"required": ["headers"]},
+          {"required": ["json"]}
+        ]
       },
       "append": {
-        "description": "append headers",
         "type": "object",
+        "additionalProperties": false,
         "properties": {
           "headers": {
-            "type": "array",
-            "elements": {
-              "type": "string"
-            }
+            "description": "append headers",
+            "$ref": "#/definitions/stringArray"
+          },
+          "json": {
+            "description": "append JSON properties",
+            "$ref": "#/definitions/stringArray"
+          },
+          "json_types": {
+            "description": "List of JSON type names. Specify the types of the JSON values returned when appending JSON properties.",
+            "$ref": "#/definitions/JsonTypesArray"
           }
+        },
+        "anyOf": [
+          {"required": ["headers"]},
+          {"required": ["json"]}
+        ]
+      }
+    },
+    "definitions": {
+      "stringArray": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "JsonTypesArray": {
+        "type": "array",
+        "items": {
+          "enum": [
+            "boolean",
+            "number",
+            "string"
+          ]
         }
       }
     }
