@@ -31,9 +31,25 @@ jobs:
           echo "missing output binary"
           exit 1
         fi
-        cp target/wasm32-wasi/release/proxy_wasm_rust_response_transformer.wasm filter.wasm
+        mv target/wasm32-wasi/release/proxy_wasm_rust_response_transformer.wasm \
+          ./response_transformer.wasm
+        cp filter.meta.json ./response_transformer.meta.json
+
+        readonly BODY=./body.md
+        touch "$BODY"
+
+        printf '## checksums\n\n' >> "$BODY"
+        printf '```\n'            >> "$BODY"
+
+        sha256sum \
+          response_transformer.wasm \
+          response_transformer.meta.json \
+        >> "$BODY"
+
+        printf '```\n'            >> "$BODY"
 
     - uses: ncipollo/release-action@v1
       with:
-        artifacts: filter.wasm,filter.meta.json
+        artifacts: response_transformer.wasm,response_transformer.meta.json
         makeLatest: 'true'
+        bodyFile: body.md
