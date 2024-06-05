@@ -19,7 +19,17 @@ proxy_wasm::main! {{
 
 const CONTENT_LENGTH: &str = "content-length";
 const CONTENT_TYPE: &str = "content-type";
-const JSON_CONTENT_TYPE: &str = "application/json";
+
+fn is_json_mime_type<T: AsRef<str>>(ct: T) -> bool {
+    let Ok(mt) = ct.as_ref().parse::<mime::Mime>() else {
+        return false;
+    };
+
+    matches!(
+        (mt.type_(), mt.subtype(), mt.suffix()),
+        (mime::APPLICATION, mime::JSON, _) | (mime::APPLICATION, _, Some(mime::JSON))
+    )
+}
 
 struct ResponseTransformerRoot {
     config: Option<Rc<Config>>,
@@ -132,7 +142,7 @@ impl HttpContext for ResponseTransformerHttp {
 impl ResponseTransformerHttp {
     fn is_json_response(&self) -> bool {
         self.get_http_response_header(CONTENT_TYPE)
-            .map_or(false, |ct| ct.eq_ignore_ascii_case(JSON_CONTENT_TYPE))
+            .map_or(false, is_json_mime_type)
     }
 
     fn transform_headers(&self, tx: &Headers) {
@@ -265,5 +275,26 @@ impl ResponseTransformerHttp {
         };
 
         self.set_http_response_body(0, body.len(), body.as_slice());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_json_mime_type_detection() {
+        assert!(is_json_mime_type("application/json"));
+        assert!(is_json_mime_type("APPLICATION/json"));
+        assert!(is_json_mime_type("APPLICATION/JSON"));
+        assert!(is_json_mime_type("application/JSON"));
+        assert!(is_json_mime_type("application/json; charset=utf-8"));
+        assert!(is_json_mime_type("application/problem+json"));
+        assert!(is_json_mime_type("application/problem+JSON"));
+        assert!(is_json_mime_type("application/problem+json; charset=utf-8"));
+
+        assert!(!is_json_mime_type("text/plain"));
+        assert!(!is_json_mime_type("application/not-json"));
+        assert!(!is_json_mime_type("nope/json"));
     }
 }
