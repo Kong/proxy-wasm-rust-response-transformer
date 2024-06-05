@@ -1,10 +1,12 @@
 use crate::json::*;
+use log::*;
 use std::convert::TryFrom;
 use std::fmt;
 
 use serde::Deserialize;
 
 use serde_json::Value as JsonValue;
+type JsonMap = serde_json::Map<String, JsonValue>;
 
 fn split_str(input: &str) -> Result<(&str, &str), InvalidKeyValue> {
     input
@@ -120,6 +122,7 @@ impl From<ConfigInput> for Config {
         {
             config.json = Some(Json {
                 remove: val.remove.json,
+                rename: val.rename.json,
                 replace: val.replace.cast_json(),
                 add: val.add.cast_json(),
                 append: val.append.cast_json(),
@@ -139,12 +142,93 @@ pub(crate) struct Headers {
     pub(crate) append: Vec<KeyValue>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub(crate) struct Json {
     pub(crate) remove: Vec<String>,
+    pub(crate) rename: Vec<KeyValue>,
     pub(crate) replace: Vec<(String, JsonValue)>,
     pub(crate) add: Vec<(String, JsonValue)>,
     pub(crate) append: Vec<(String, JsonValue)>,
+}
+
+impl Json {
+    pub(crate) fn transform_body(&self, body: &mut JsonMap) -> bool {
+        // https://docs.konghq.com/hub/kong-inc/response-transformer/#order-of-execution
+
+        let mut changed = false;
+
+        for field in &self.remove {
+            if body.remove(field).is_some() {
+                info!("removed field {:?}", field);
+                changed = true;
+            }
+        }
+
+        for KeyValue(from, to) in &self.rename {
+            if let Some(v) = body.remove(from) {
+                let _ = body.insert(to.clone(), v);
+                info!("renamed {} => {}", from, to);
+                changed = true;
+            }
+        }
+
+        for (field, value) in &self.replace {
+            if let Some(found) = body.get_mut(field) {
+                if found != value {
+                    info!("replacing field {:?} {:?} => {:?}", field, found, value);
+                    *found = value.clone();
+                    changed = true;
+                }
+            }
+        }
+
+        for (field, value) in &self.add {
+            if !body.contains_key(field) {
+                info!("adding field {:?} {:?}", field, value);
+                body.insert(field.to_owned(), value.clone());
+                changed = true;
+            }
+        }
+
+        for (field, value) in &self.append {
+            body.entry(field)
+                .and_modify(|found| {
+                    let current = found.take();
+                    let mut appended = false;
+
+                    *found = match current {
+                        JsonValue::String(_) => {
+                            appended = true;
+                            serde_json::json!([current, value.clone()])
+                        }
+                        JsonValue::Array(mut arr) => {
+                            appended = true;
+                            arr.push(value.clone());
+                            arr.into()
+                        }
+                        // XXX: this branch is not fully compatible with the Lua plugin
+                        //
+                        // The lua plugin doesn't attempt to disambiguate between an
+                        // array-like table and a map-like table. It just blindly calls
+                        // the `table.insert()` function.
+                        _ => current,
+                    };
+
+                    if appended {
+                        changed = true;
+                        info!("appended {:?} to {:?}", value, field);
+                    }
+                })
+                .or_insert_with(|| {
+                    changed = true;
+                    let new = serde_json::json!([value]);
+                    info!("inserted {:?} to {:?}", new, field);
+                    new
+                });
+        }
+
+        changed
+    }
 }
 
 #[derive(Default, Debug, Clone)]
@@ -156,6 +240,17 @@ pub(crate) struct Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    macro_rules! map {
+        ($x:tt) => {{
+            let json = serde_json::json!($x);
+
+            let serde_json::Value::Object(map) = json else {
+                panic!("not a json object");
+            };
+            map
+        }};
+    }
 
     impl KeyValue {
         #[warn(unused)]
@@ -193,6 +288,189 @@ mod tests {
                 ..Default::default()
             },
             serde_json::from_str(r#"{ "headers": ["a:b", "c:d"] }"#).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_json_transform_remove() {
+        let tx = Json {
+            remove: vec!["remove_me".to_string()],
+            ..Default::default()
+        };
+
+        let mut body = map!({
+            "remove_me": "goodbye",
+            "unchanged": true
+        });
+
+        assert!(tx.transform_body(&mut body));
+
+        assert_eq!(body, map!({ "unchanged": true }));
+
+        // no more changes
+        assert!(!tx.transform_body(&mut body));
+    }
+
+    #[test]
+    fn test_json_transform_rename() {
+        let tx = Json {
+            rename: vec![KeyValue::from(("rename_me", "renamed"))],
+            ..Default::default()
+        };
+
+        let mut body = map!({
+            "rename_me": "test",
+            "unchanged": true
+        });
+
+        assert!(tx.transform_body(&mut body));
+
+        assert_eq!(
+            body,
+            map!({
+                "renamed": "test",
+                "unchanged": true
+            })
+        );
+
+        // no more changes
+        assert!(!tx.transform_body(&mut body));
+    }
+
+    #[test]
+    fn test_json_transform_replace() {
+        let tx = Json {
+            replace: vec![(
+                "replace_me".to_string(),
+                JsonValue::String("replacement".to_string()),
+            )],
+            ..Default::default()
+        };
+
+        let mut body = map!({
+            "replace_me": "test",
+            "unchanged": true
+        });
+
+        assert!(tx.transform_body(&mut body));
+
+        assert_eq!(
+            body,
+            map!({
+                "replace_me": "replacement",
+                "unchanged": true
+            })
+        );
+
+        // no more changes
+        assert!(!tx.transform_body(&mut body));
+    }
+
+    #[test]
+    fn test_json_transform_add() {
+        let tx = Json {
+            add: vec![("add_me".to_string(), JsonValue::String("added".to_string()))],
+            ..Default::default()
+        };
+
+        let mut body = map!({ "unchanged": true });
+
+        assert!(tx.transform_body(&mut body));
+
+        assert_eq!(
+            body,
+            map!({
+                "add_me": "added",
+                "unchanged": true
+            })
+        );
+
+        // no more changes
+        assert!(!tx.transform_body(&mut body));
+    }
+
+    #[test]
+    fn test_json_transform_append_absent() {
+        let tx = Json {
+            append: vec![(
+                "append_me".to_string(),
+                JsonValue::String("appended".to_string()),
+            )],
+            ..Default::default()
+        };
+
+        let mut body = map!({ "unchanged": true });
+
+        assert!(tx.transform_body(&mut body));
+
+        assert_eq!(
+            body,
+            map!({
+                "append_me": [
+                    "appended"
+                ],
+                "unchanged": true
+            })
+        );
+    }
+
+    #[test]
+    fn test_json_transform_append_array() {
+        let tx = Json {
+            append: vec![(
+                "append_me".to_string(),
+                JsonValue::String("appended".to_string()),
+            )],
+            ..Default::default()
+        };
+
+        let mut body = map!({
+            "append_me": [
+                "current value"
+            ],
+            "unchanged": true
+        });
+
+        assert!(tx.transform_body(&mut body));
+
+        assert_eq!(
+            body,
+            map!({
+                "append_me": [
+                    "current value",
+                    "appended"
+                ],
+                "unchanged": true
+            })
+        );
+    }
+
+    #[test]
+    fn test_json_transform_append_string() {
+        let tx = Json {
+            append: vec![(
+                "append_me".to_string(),
+                JsonValue::String("appended".to_string()),
+            )],
+            ..Default::default()
+        };
+
+        let mut body = map!({
+            "append_me": "current value",
+            "unchanged": true
+        });
+
+        assert!(tx.transform_body(&mut body));
+
+        assert_eq!(
+            body,
+            map!({
+                "append_me": [
+                    "current value",
+                    "appended"
+                ],
+                "unchanged": true
+            })
         );
     }
 }
