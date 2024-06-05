@@ -184,8 +184,6 @@ impl ResponseTransformerHttp {
     }
 
     fn transform_body(&self, tx: &Json, body: Vec<u8>) {
-        let mut changed = false;
-
         let mut json = match serde_json::from_slice(&body) {
             Ok(JsonValue::Object(value)) => value,
             Ok(other) => {
@@ -201,67 +199,7 @@ impl ResponseTransformerHttp {
             }
         };
 
-        tx.remove.iter().for_each(|field| {
-            if json.remove(field).is_some() {
-                info!("removed field {:?}", field);
-                changed = true;
-            }
-        });
-
-        tx.replace.iter().for_each(|(field, value)| {
-            if let Some(found) = json.get_mut(field) {
-                info!("replacing field {:?} {:?} => {:?}", field, found, value);
-                *found = value.clone();
-                changed = true;
-            }
-        });
-
-        tx.add.iter().for_each(|(field, value)| {
-            if !json.contains_key(field) {
-                info!("adding field {:?} {:?}", field, value);
-                json.insert(field.to_owned(), value.clone());
-                changed = true;
-            }
-        });
-
-        tx.append.iter().for_each(|(field, value)| {
-            json.entry(field)
-                .and_modify(|found| {
-                    let current = found.take();
-                    let mut appended = false;
-
-                    *found = match current {
-                        JsonValue::String(_) => {
-                            appended = true;
-                            serde_json::json!([current, value.clone()])
-                        }
-                        JsonValue::Array(mut arr) => {
-                            appended = true;
-                            arr.push(value.clone());
-                            arr.into()
-                        }
-                        // XXX: this branch is not fully compatible with the Lua plugin
-                        //
-                        // The lua plugin doesn't attempt to disambiguate between an
-                        // array-like table and a map-like table. It just blindly calls
-                        // the `table.insert()` function.
-                        _ => current,
-                    };
-
-                    if appended {
-                        changed = true;
-                        info!("appended {:?} to {:?}", value, field);
-                    }
-                })
-                .or_insert_with(|| {
-                    changed = true;
-                    let new = serde_json::json!([value]);
-                    info!("inserted {:?} to {:?}", new, field);
-                    new
-                });
-        });
-
-        if !changed {
+        if !tx.transform_body(&mut json) {
             info!("no response body changes were applied");
             return;
         }
